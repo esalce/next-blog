@@ -1,65 +1,93 @@
-import Head from 'next/head'
-import styles from '../styles/Home.module.css'
+import React, {useEffect, useState} from 'react';
+import {NextPage} from 'next';
+import {useRouter} from 'next/router'
 
-export default function Home() {
-  return (
-    <div className={styles.container}>
-      <Head>
-        <title>Create Next App</title>
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
+import {ContentfulService} from '../core/contentful';
 
-      <main className={styles.main}>
-        <h1 className={styles.title}>
-          Welcome to <a href="https://nextjs.org">Next.js!</a>
-        </h1>
+import {BlogPost} from '../interfaces/post';
 
-        <p className={styles.description}>
-          Get started by editing{' '}
-          <code className={styles.code}>pages/index.js</code>
-        </p>
+import Layout from '../shared/components/layout';
+import Card from '../shared/components/card';
+import Paginator from '../shared/components/paginator';
+import TagFilters from "../shared/components/tag-filters";
 
-        <div className={styles.grid}>
-          <a href="https://nextjs.org/docs" className={styles.card}>
-            <h3>Documentation &rarr;</h3>
-            <p>Find in-depth information about Next.js features and API.</p>
-          </a>
+const calculateRange = (length) => Array.from({length}, (v, k) => k + 1);
 
-          <a href="https://nextjs.org/learn" className={styles.card}>
-            <h3>Learn &rarr;</h3>
-            <p>Learn about Next.js in an interactive course with quizzes!</p>
-          </a>
+const cards = (entries) => entries.map((entry, index) => (<Card info={entry} key={index}/>));
 
-          <a
-            href="https://github.com/vercel/next.js/tree/master/examples"
-            className={styles.card}
-          >
-            <h3>Examples &rarr;</h3>
-            <p>Discover and deploy boilerplate example Next.js projects.</p>
-          </a>
-
-          <a
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-          >
-            <h3>Deploy &rarr;</h3>
-            <p>
-              Instantly deploy your Next.js site to a public URL with Vercel.
-            </p>
-          </a>
-        </div>
-      </main>
-
-      <footer className={styles.footer}>
-        <a
-          href="https://vercel.com?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Powered by{' '}
-          <img src="/vercel.svg" alt="Vercel Logo" className={styles.logo} />
-        </a>
-      </footer>
-    </div>
-  )
+type Props = {
+    entries: BlogPost[];
+    tags: { id: string, name: string }[];
+    url: any;
+    total: number;
+    skip: number;
+    limit: number;
+    page?: number;
 }
+
+const IndexPage: NextPage = (props: Props) => {
+    const router = useRouter();
+    const entries = props.entries.length ? props.entries : [];
+    const tags = props.tags || [];
+    const total = props.total;
+
+    const limit = props.limit;
+    const rangeLimit = Math.ceil(total / limit);
+    const range = calculateRange(rangeLimit);
+
+    const [page, updatePage] = useState(!!props.page ? props.page : 1);
+    const [tag, updateTag] = useState('');
+
+    useEffect(() => {
+        void router.push({pathname: '/', query: {page: page, tag: tag}});
+    }, [page, tag]);
+
+    const handleTagChosen = (tag) => {
+        updatePage(1);
+        updateTag(tag);
+    };
+
+    return (
+        <Layout>
+            <div className="container">
+                <div className="blogposts">
+                    <h1 className="blogposts__header">Latest posts</h1>
+                    <div className="cards-deck">
+                        {cards(entries)}
+                    </div>
+                </div>
+                <div className="sidenav">
+                    <TagFilters tags={tags} updatePage={handleTagChosen} selectedTagId={tag}/>
+                </div>
+                <div className="pagination">
+                    <Paginator handlePaginationChange={(event) => updatePage(event)} range={range} skip={page}/>
+                </div>
+            </div>
+        </Layout>
+    )
+};
+
+IndexPage.getInitialProps = async ({query}) => {
+    
+    const contentfulService = new ContentfulService();
+    
+    let page: number = 1;
+
+    if (query.page) {
+        page = parseInt(query.page + '');
+    }
+
+
+    const limit = 3;
+    const {entries, total, skip, limit} = await contentfulService.getBlogPostEntries({
+        tag: query.tag ? query.tag.toString() : '',
+        skip: (page - 1) * limit,
+        limit,
+    });
+
+    const {tags} = await contentfulService.getAllTags();
+
+    return {page, tags, entries, total, skip, limit};
+};
+
+export default IndexPage;
